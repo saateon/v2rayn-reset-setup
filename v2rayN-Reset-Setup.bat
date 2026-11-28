@@ -1,5 +1,5 @@
 @echo off
-title v2rayN Reset + Setup
+title v2rayN Reset + Setup v1.1.0
 net session >nul 2>&1 || (
   powershell -NoProfile -Command "Start-Process -Verb RunAs -FilePath '%~f0'"
   exit /b
@@ -12,6 +12,18 @@ exit /b
 #PS_START
 $ErrorActionPreference = 'SilentlyContinue'
 function Say($m){ Write-Host "==> $m" -ForegroundColor Cyan }
+function Warn($m){ Write-Host "==> $m" -ForegroundColor Yellow }
+function Get-Json($u){ try { $t = & curl.exe -s -m 8 -H 'User-Agent: v2rayn-reset-setup' $u; ($t -join "`n") | ConvertFrom-Json } catch { $null } }
+
+# 0) Version banner + script update check
+$ver = '1.1.0'
+Write-Host ""
+Write-Host "================ v2rayN Reset + Setup  v$ver ================" -ForegroundColor Green
+$rv = ((& curl.exe -s -m 6 'https://raw.githubusercontent.com/saateon/v2rayn-reset-setup/main/VERSION') -join '').Trim()
+if ($rv -match '^\d+\.\d+\.\d+$') {
+  if ([version]$rv -gt [version]$ver) { Warn "A newer script exists: v$rv - get it from github.com/saateon/v2rayn-reset-setup" }
+  else { Say "Script is up to date (v$ver)." }
+} else { Warn "Script update check skipped (GitHub not reachable)." }
 
 # 1) Find v2rayN: C:\app first, then search elsewhere (newest version wins)
 $exe = $null
@@ -28,7 +40,15 @@ if (-not $exe) {
 }
 if (-not $exe) { Write-Host "v2rayN.exe not found. Extract v2rayN (e.g. to C:\app\v2rayN) and run this again." -ForegroundColor Red; return }
 $root = Split-Path $exe
-Say "v2rayN found: $exe  (version $((Get-Item $exe).VersionInfo.FileVersion))"
+$inst = (Get-Item $exe).VersionInfo.FileVersion
+Say "v2rayN found: $exe"
+$rel = Get-Json 'https://api.github.com/repos/2dust/v2rayN/releases/latest'
+if ($rel.tag_name) {
+  $lat = $rel.tag_name.TrimStart('v')
+  $old = $false; try { $old = [version]$lat -gt [version]$inst } catch {}
+  if ($old) { Warn "v2rayN installed: $inst | latest: $lat  -> UPDATE AVAILABLE (github.com/2dust/v2rayN/releases)" }
+  else { Say "v2rayN installed: $inst | latest: $lat  -> up to date" }
+} else { Warn "v2rayN installed: $inst | latest: unknown (GitHub not reachable)" }
 
 # 2) Stop v2rayN and its cores
 Say "Stopping v2rayN..."
@@ -67,17 +87,22 @@ $base = @(
   'https://cdn.jsdelivr.net/gh/Chocolate4U/Iran-v2ray-rules@release'
 )
 $geoOk = $true
+$grel = Get-Json 'https://api.github.com/repos/Chocolate4U/Iran-v2ray-rules/releases/latest'
+if ($grel.tag_name) { Say "Iran rules release: $($grel.tag_name) ($($grel.published_at))" }
+$n = 0
 foreach ($f in @(@{n='geosite.dat'; min=4MB}, @{n='geoip.dat'; min=8MB})) {
   $dst = "$root\bin\$($f.n)"; $part = "$dst.part"; $done = $false
   Remove-Item $part -Force -ErrorAction SilentlyContinue
+  $n++; Write-Host ""; Say "[$n/2] $($f.n)  (expected at least $([int]($f.min/1MB)) MB)"
+  $sw = [Diagnostics.Stopwatch]::StartNew()
   for ($try = 1; $try -le 4 -and -not $done; $try++) {
     foreach ($b in $base) {
-      Say "Downloading $($f.n) (try $try) from $(([uri]$b).Host)..."
-      & curl.exe -L -s -S --fail --retry 3 --retry-delay 2 --connect-timeout 20 -C - -o $part "$b/$($f.n)" 2>$null
+      Say "Try $try/4 - source: $(([uri]$b).Host)"
+      & curl.exe -L --progress-bar --fail --retry 3 --retry-delay 2 --connect-timeout 20 -C - -o $part "$b/$($f.n)"
       if ((Test-Path $part) -and (Get-Item $part).Length -ge $f.min) { $done = $true; break }
     }
   }
-  if ($done) { Move-Item $part $dst -Force; Say "$($f.n) OK ($([math]::Round((Get-Item $dst).Length/1MB,1)) MB)" }
+  if ($done) { Move-Item $part $dst -Force; Say "$($f.n) OK - $([math]::Round((Get-Item $dst).Length/1MB,1)) MB in $([int]$sw.Elapsed.TotalSeconds)s" }
   else { Remove-Item $part -Force -ErrorAction SilentlyContinue; $geoOk = $false; Write-Host "Could not download $($f.n)." -ForegroundColor Yellow }
 }
 
@@ -94,7 +119,7 @@ Say "Starting v2rayN (admin)..."
 Start-Process $exe -WorkingDirectory $root
 
 Write-Host ""
-Write-Host "DONE. Add your server in v2rayN (Ctrl+V) and connect." -ForegroundColor Green
+Write-Host "DONE (script v$ver, v2rayN $inst). Add your server in v2rayN (Ctrl+V) and connect." -ForegroundColor Green
 Write-Host "Settings: TUN on | Routing = IR Direct | Iran DNS direct, others DoH via VPN | IPv4 only | STUN blocked | IPv6 off | Fragment off" -ForegroundColor Green
 if (-not $geoOk) {
   Write-Host ""

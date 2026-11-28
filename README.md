@@ -11,6 +11,9 @@ One double-click: fully resets v2rayN on Windows and applies TUN, Iran-direct ro
 5. Downloads `geosite.dat` / `geoip.dat` (Iran rules) from [Chocolate4U/Iran-v2ray-rules](https://github.com/Chocolate4U/Iran-v2ray-rules) with retry, resume and 3 mirrors
 6. Creates a desktop shortcut (run as admin) and starts v2rayN
 
+## نسخه / Version
+Current: **v1.1.0** (`VERSION` file). On start the script prints its version and checks GitHub for: a newer script, a newer v2rayN, the Iran-rules release date. Geo downloads show a live progress bar, source host, size and time.
+
 ## استفاده / Usage
 Download `v2rayN-Reset-Setup.bat`, double-click, accept UAC, then add your server (Ctrl+V).
 
